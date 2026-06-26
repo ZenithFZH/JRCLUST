@@ -63,7 +63,7 @@ function autoSplit(obj, multisite)
               'Units', 'Normalized', 'Position', [0.1, 0.7, 1, 0.15]);
     uicontrol('Parent', btngrp, 'Style', 'radiobutton', 'String', 'K-medoids', ...
               'Units', 'Normalized', 'Position', [0.1, 0.4, 1, 0.15]);
-    uicontrol('Parent', btngrp, 'Style', 'radiobutton', 'String', 'Density peak (CUDA if enabled)', ...
+    uicontrol('Parent', btngrp, 'Style', 'radiobutton', 'String', 'Density peak', ...
               'Units', 'Normalized', 'Position', [0.1, 0.25, 1, 0.15]);
 
     uicontrol('Parent', splitDlg, 'Style', 'pushbutton', ...
@@ -223,7 +223,7 @@ function preSplit(splitDlg, nsplit, btngrp, hFigSplit, hCfg)
             hFigSplit.figData.hFunSplit = @(X) kmeans(X, nsplit);
         case 'K-medoids'
             hFigSplit.figData.hFunSplit = @(X) kmedoids(X, nsplit);
-        case 'Density peak (CUDA if enabled)'
+        case 'Density peak'
             hFigSplit.figData.hFunSplit = @(X) densityPeakSplit( ...
                 X, hFigSplit.figData.clusterTimesRaw, hCfg, nsplit);
         otherwise
@@ -239,93 +239,33 @@ function preSplit(splitDlg, nsplit, btngrp, hFigSplit, hCfg)
     hFigSplit.figData.nSplits = nsplit;
 end
 
-function assigns = densityPeakSplit(features, spikeTimes, hCfg, nsplit)
+function assigns = densityPeakSplit(function assigns = densityPeakSplit(features, spikeTimes, hCfg, nsplit)
+    % Use the manual-curation density-peak implementation directly.
+    %
+    % The full JRCLUST sorting rho/delta path expects a full detected-spike
+    % result with real site metadata. Manual split only has the selected
+    % cluster's feature matrix, so wrapping it as a synthetic one-site dRes is
+    % brittle in recent MATLAB versions and can fail with size-mismatch errors.
+    % The local path below is still density-peak clustering, and its distance
+    % matrix is CUDA-powered through gpuArray when useGPU is enabled.
     nSpikes = size(features, 1);
     assigns = ones(nSpikes, 1);
-
     if nSpikes < nsplit
         return;
     end
 
-    dRes = struct();
-    dRes.spikeFeatures = reshape(single(features'), size(features, 2), 1, nSpikes);
-    dRes.spikeTimes = double(spikeTimes(:));
-    dRes.spikeSites = ones(nSpikes, 1, 'int32');
-    dRes.spikesBySite = {int32((1:nSpikes)')};
-
-    useGPU = logical(hCfg.useGPU);
-    tempKeys = {'siteMap', 'siteLoc', 'siteNeighbors', ...
-                'useGlobalDistCut', 'weightFeatures', ...
-                'minClusterSize', 'verbose', 'useGPU'};
-    tempArgs = {'siteMap', 1, ...
-                'siteLoc', [0 0], ...
-                'siteNeighbors', 1, ...
-                'useGlobalDistCut', 0, ...
-                'weightFeatures', 0, ...
-                'minClusterSize', 1, ...
-                'verbose', 0, ...
-                'useGPU', useGPU};
-    if isprop(hCfg, 'timeFeatureFactor')
-        tempKeys{end + 1} = 'timeFeatureFactor';
-        tempArgs(end + 1:end + 2) = {'timeFeatureFactor', 0};
-    end
-    hCfg.setTemporaryParams(tempArgs{:});
-    cleanupObj = onCleanup(@() hCfg.resetTemporaryParams(tempKeys)); %#ok<NASGU>
-
     try
-        try
-            sRes = runDensityPeak(dRes, hCfg, nSpikes);
-        catch gpuME
-            if ~useGPU
-                rethrow(gpuME);
-            end
-
-            warning('JRCLUST:DensityPeakGPUFallback', ...
-                    'Density-peak CUDA path failed; retrying on CPU: %s', gpuME.message);
-            hCfg.useGPU = 0;
-            sRes = runDensityPeak(dRes, hCfg, nSpikes);
-        end
-
-        clusterIds = unique(sRes.spikeClusters(:)');
-        clusterIds(clusterIds <= 0) = [];
-        if isempty(clusterIds)
-            error('JRCLUST:DensityPeakNoClusters', 'Density-peak clustering produced no clusters.');
-        end
-
-        counts = arrayfun(@(id) sum(sRes.spikeClusters == id), clusterIds);
-        [~, order] = sort(counts, 'descend');
-        clusterIds = clusterIds(order);
-
-        nKeep = min(nsplit, numel(clusterIds));
-        remapped = zeros(size(sRes.spikeClusters), 'like', sRes.spikeClusters);
-        for i = 1:nKeep
-            remapped(sRes.spikeClusters == clusterIds(i)) = i;
-        end
-        remapped(remapped == 0) = nKeep;
-        assigns = double(remapped(:));
-
+        assigns = localDensityPeakSplit(features, spikeTimes, hCfg, nsplit);
         if numel(unique(assigns)) < 2
             error('JRCLUST:DensityPeakCollapsed', 'Density-peak clustering collapsed to one cluster.');
         end
     catch ME
-        try
-            assigns = localDensityPeakSplit(features, spikeTimes, hCfg, nsplit);
-            if numel(unique(assigns)) >= 2
-                warning('JRCLUST:DensityPeakLocalFallback', ...
-                        'Density-peak JRCLUST path failed; used local density-peak fallback instead: %s', ME.message);
-                return;
-            end
-        catch localME
-            warning('JRCLUST:DensityPeakLocalFallbackFailed', ...
-                    'Local density-peak fallback failed: %s', localME.message);
-        end
-
         warning('JRCLUST:DensityPeakKMeansFallback', ...
                 'Density-peak split failed; using k-means instead: %s', ME.message);
         try
             assigns = kmeans(features, nsplit, 'Replicates', 3);
         catch
-            assigns = ones(nSpikes, 1);
+            assigns = ones(size(features, 1), 1);
         end
     end
 end
@@ -343,7 +283,7 @@ function assigns = localDensityPeakSplit(features, spikeTimes, hCfg, nsplit)
     features = (features - mean(features, 1)) ./ featureScale;
     features(:, ~all(isfinite(features), 1)) = 0;
 
-    distances = pdist2(features, features, 'squaredeuclidean');
+    distances = pairwiseSquaredDistances(features, hCfg);
     distances(1:nSpikes + 1:end) = inf;
 
     finiteDistances = distances(isfinite(distances));
@@ -405,17 +345,37 @@ function assigns = localDensityPeakSplit(features, spikeTimes, hCfg, nsplit)
     end
 end
 
-function sRes = runDensityPeak(dRes, hCfg, nSpikes)
-    sRes = struct('spikeRho', zeros(nSpikes, 1, 'single'), ...
-                  'spikeDelta', zeros(nSpikes, 1, 'single'), ...
-                  'spikeNeigh', zeros(nSpikes, 1, 'uint32'));
-    sRes = jrclust.sort.computeRho(dRes, sRes, hCfg);
-    sRes = jrclust.sort.computeDelta(dRes, sRes, hCfg);
-    [~, sRes.ordRho] = sort(sRes.spikeRho, 'descend');
-    sRes = jrclust.sort.assignClusters(dRes, sRes, hCfg);
+function distances = pairwiseSquaredDistances(features, hCfg)
+    useGPU = false;
+    try
+        useGPU = logical(hCfg.useGPU);
+    catch
+    end
+
+    if useGPU
+        try
+            featuresGPU = gpuArray(single(features));
+            squaredNorms = sum(featuresGPU .^ 2, 2);
+            distancesGPU = bsxfun(@plus, squaredNorms, squaredNorms') - 2 .* (featuresGPU * featuresGPU');
+            distancesGPU = max(distancesGPU, 0);
+            distances = gather(distancesGPU);
+            return;
+        catch ME
+            warning('JRCLUST:DensityPeakGPUArrayFallback', ...
+                    'Density-peak GPU distance step failed; retrying on CPU: %s', ME.message);
+        end
+    end
+
+    distances = pairwiseSquaredDistancesCPU(features);
 end
 
-function assignPart = normalizeAssignPart(assigns)
+function distances = pairwiseSquaredDistancesCPU(features)
+    squaredNorms = sum(features .^ 2, 2);
+    distances = bsxfun(@plus, squaredNorms, squaredNorms') - 2 .* (features * features');
+    distances = max(distances, 0);
+end
+
+nPart(assigns)
     assigns = double(assigns(:));
     groupIds = unique(assigns(:)');
     groupIds(groupIds <= 0 | isnan(groupIds)) = [];
