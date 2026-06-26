@@ -4,13 +4,12 @@ function res = computeDelta(dRes, res, hCfg)
 
     % create CUDA kernel
     chunkSize = 16;
-    nC_max = 45;
     if hCfg.useGPU
         ptxFile = fullfile(jrclust.utils.basedir(), '+jrclust', '+CUDA', 'jrc_cuda_delta.ptx');
         cuFile = fullfile(jrclust.utils.basedir(), '+jrclust', '+CUDA', 'jrc_cuda_delta.cu');
         deltaCK = parallel.gpu.CUDAKernel(ptxFile, cuFile);
         deltaCK.ThreadBlockSize = [hCfg.nThreadsGPU, 1];
-        deltaCK.SharedMemorySize = 4 * chunkSize * (3 + nC_max + 2*hCfg.nThreadsGPU);
+        deltaCK.SharedMemorySize = 0;
     else
         deltaCK = [] ;
     end
@@ -36,12 +35,12 @@ function res = computeDelta(dRes, res, hCfg)
         end
 
         [siteFeatures, spikes, n1, n2, spikeOrder] = jrclust.features.getSiteFeatures(dRes.spikeFeatures, iSite, spikeData, hCfg);
-        if hCfg.useGPU
-            deltaCK.GridSize = [ceil(n1/chunkSize^2), chunkSize]; % MaxGridSize: [2.1475e+09 65535 65535]
-        end
-
         if isempty(siteFeatures)
             continue;
+        end
+
+        if hCfg.useGPU
+            deltaCK.GridSize = [ceil(n1/chunkSize), 1];
         end
 
         rhoOrder = jrclust.utils.rankorder(res.spikeRho(spikes), 'descend');

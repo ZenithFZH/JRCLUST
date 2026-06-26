@@ -39,7 +39,10 @@ classdef Figure < handle
     methods
         function obj = Figure(figTag, figPos, figName, figToolbar, figMenubar)
             %FIGURE Construct an instance of this class
-            obj.hFig = figure();
+            obj.hFig = figure('Visible', 'off', ...
+                              'Color', 'w', ...
+                              'NumberTitle', 'off', ...
+                              'IntegerHandle', 'off');
 
             obj.figTag = figTag;
 
@@ -48,7 +51,10 @@ classdef Figure < handle
 
             obj.figName = figName;
 
-            set(obj.hFig, 'Color', 'w', 'NumberTitle', 'off');
+            try
+                set(obj.hFig, 'GraphicsSmoothing', 'off');
+            catch
+            end
             
             if figToolbar
                 set(obj.hFig, 'ToolBar', 'figure');
@@ -70,6 +76,9 @@ classdef Figure < handle
             obj.permaHidden = {};
             obj.isMouseable = 0;
             obj.isWaiting = 0;
+
+            set(obj.hFig, 'Visible', 'on');
+            jrclust.utils.safeDrawnow();
         end
     end
 
@@ -249,7 +258,12 @@ classdef Figure < handle
             if obj.isReady
                 sp = matlab.graphics.axis.Axes.empty(nRows*nCols, 0);
                 for i = 1:nRows*nCols
-                    sp(i) = subplot(nRows, nCols, i);
+                    try
+                        sp(i) = subplot(nRows, nCols, i, 'Parent', obj.hFig);
+                    catch
+                        figure(obj.hFig);
+                        sp(i) = subplot(nRows, nCols, i);
+                    end
                 end
                 obj.hSubplots(plotKey) = sp;
             end
@@ -604,18 +618,33 @@ classdef Figure < handle
                 return;
             end
 
-            tbHeight = 40; % taskbar height
-
             rootPos = get(groot, 'ScreenSize');
-            screenWidth = rootPos(3);
-            screenHeight = rootPos(4) - tbHeight;
+            if numel(rootPos) < 4 || rootPos(3) <= 1 || rootPos(4) <= 1
+                rootPos = [1 1 1200 800];
+            end
 
-            figPos = [max(1, round(figPos(1) * screenWidth)) ... % left
-                      tbHeight + max(1, round(figPos(2)*screenHeight)) ... % bottom
-                      min(screenWidth, round(figPos(3)*screenWidth)) ... % right
-                      min(screenHeight, round(figPos(4)*screenHeight))]; % top
+            screenLeft = rootPos(1);
+            screenBottom = rootPos(2);
+            screenWidth = max(320, rootPos(3));
+            screenHeight = max(240, rootPos(4));
 
-            drawnow;
+            if all(abs(figPos) <= 1.5)
+                figPos = [screenLeft + round(figPos(1) * screenWidth), ...
+                          screenBottom + round(figPos(2) * screenHeight), ...
+                          round(figPos(3) * screenWidth), ...
+                          round(figPos(4) * screenHeight)];
+            else
+                figPos = round(figPos);
+            end
+
+            minWidth = min(260, screenWidth);
+            minHeight = min(180, screenHeight);
+            figPos(3) = min(max(figPos(3), minWidth), screenWidth);
+            figPos(4) = min(max(figPos(4), minHeight), screenHeight);
+            figPos(1) = min(max(figPos(1), screenLeft), screenLeft + screenWidth - figPos(3));
+            figPos(2) = min(max(figPos(2), screenBottom), screenBottom + screenHeight - figPos(4));
+
+            jrclust.utils.safeDrawnow();
             set(obj.hFig, 'OuterPosition', figPos);
         end
 
@@ -670,4 +699,3 @@ classdef Figure < handle
         end
     end
 end
-

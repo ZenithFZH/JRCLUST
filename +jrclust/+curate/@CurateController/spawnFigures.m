@@ -1,8 +1,20 @@
 function spawnFigures(obj)
     %SPAWNFIGURES Create the standard cadre of figures
-    obj.hFigs = containers.Map();   
-    for f=1:length(obj.hCfg.figList)
-        figTag = obj.hCfg.figList{f};
+    obj.hFigs = containers.Map();
+    figList = obj.hCfg.figList;
+    figPos = obj.hCfg.figPos;
+
+    if obj.hCfg.getOr('modernGuiMode', 0)
+        modernFigList = obj.hCfg.getOr('modernFigList', ...
+            {'FigWav', 'FigSim', 'FigProj', 'FigTime', 'FigISI', 'FigCorr', 'FigHist'});
+        keepFig = ismember(figList, modernFigList);
+        keepFig = keepFig | ismember(figList, {'FigWav'});
+        figList = figList(keepFig);
+        figPos = figPos(keepFig);
+    end
+
+    for f=1:length(figList)
+        figTag = figList{f};
         figToolbar = 0;
         figMenubar = 0;
         switch figTag
@@ -34,7 +46,7 @@ function spawnFigures(obj)
                 end
                 figTitle = 'Unit rho-delta';                
         end
-        obj.hFigs(figTag) = jrclust.views.Figure(figTag,obj.hCfg.figPos{f},sprintf('%s: %s',figTitle,obj.hCfg.sessionName),figToolbar,figMenubar);
-        drawnow;
+        obj.hFigs(figTag) = jrclust.views.Figure(figTag,figPos{f},sprintf('%s: %s',figTitle,obj.hCfg.sessionName),figToolbar,figMenubar);
+        jrclust.utils.safeDrawnow();
     end
 end

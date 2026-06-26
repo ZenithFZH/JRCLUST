@@ -350,8 +350,11 @@ classdef TracesController < jrclust.interfaces.FigureController
             obj.showGrid = 1;
             figData.grid = 'on';
 
-            obj.showSpikes = 0;
-            figData.spikes = 'off';
+            obj.showSpikes = obj.hCfg.getOr('showSpikesTraces', 0);
+	    figData.spikes = 'off';
+            if obj.showSpikes
+                figData.spikes = 'on';
+            end
 
             obj.showTraces = 1;
             figData.traces = 'on';
