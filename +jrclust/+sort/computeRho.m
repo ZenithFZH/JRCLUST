@@ -12,13 +12,12 @@ function res = computeRho(dRes, res, hCfg)
 
     % create CUDA kernel
     chunkSize = 16;
-    nC_max = 45;
     if hCfg.useGPU
         ptxFile = fullfile(jrclust.utils.basedir(), '+jrclust', '+CUDA', 'jrc_cuda_rho.ptx');
         cuFile = fullfile(jrclust.utils.basedir(), '+jrclust', '+CUDA', 'jrc_cuda_rho.cu');
         rhoCK = parallel.gpu.CUDAKernel(ptxFile, cuFile);
         rhoCK.ThreadBlockSize = [hCfg.nThreadsGPU, 1];
-        rhoCK.SharedMemorySize = 4 * chunkSize * (2 + nC_max + 2*hCfg.nThreadsGPU);
+        rhoCK.SharedMemorySize = 0;
     else
         rhoCK = [] ;
     end
@@ -44,12 +43,12 @@ function res = computeRho(dRes, res, hCfg)
         end
 
         [siteFeatures, ~, n1, n2, spikeOrder] = jrclust.features.getSiteFeatures(dRes.spikeFeatures, iSite, spikeData, hCfg);
-        if hCfg.useGPU
-            rhoCK.GridSize = [ceil(n1/chunkSize^2), chunkSize]; %MaxGridSize: [2.1475e+09 65535 65535]
-        end
-
         if isempty(siteFeatures)
             continue;
+        end
+
+        if hCfg.useGPU
+            rhoCK.GridSize = [ceil(n1/chunkSize), 1];
         end
 
         siteFeatures = jrclust.utils.tryGpuArray(siteFeatures, hCfg.useGPU);
