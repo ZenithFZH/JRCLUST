@@ -37,6 +37,7 @@ function autoSplit(obj, multisite)
     hFigSplit = jrclust.views.Figure('FigSplit', [0.05 0.05 0.8 0.8], sprintf('Split cluster %d', iCluster), 0, 0);
     hFigSplit.figApply(@set, 'Visible', 'off');
     hFigSplit.figData.nSplits = 0;
+    hFigSplit.figData.clusterTimesRaw = double(clusterTimes(:));
 
     % create a dialog
     splitDlg = dialog('Name', 'Split cluster', ...
@@ -53,7 +54,7 @@ function autoSplit(obj, multisite)
                        'Units', 'Normalized', ...
                        'Position', [0.4 0.25 0.2 0.15]);
 
-    % button group: K-means, K-medoids, Hierarchical clustering
+    % button group: K-means, K-medoids, hierarchical, density-peak clustering
     btngrp = uibuttongroup('Parent', splitDlg, 'Units', 'Normalized', ...
                            'Position', [0.1 0.1 0.3 0.8]);
     uicontrol('Parent', btngrp, 'Style', 'radiobutton', 'String', 'Hierarchical (Ward)', ...
@@ -62,12 +63,14 @@ function autoSplit(obj, multisite)
               'Units', 'Normalized', 'Position', [0.1, 0.7, 1, 0.15]);
     uicontrol('Parent', btngrp, 'Style', 'radiobutton', 'String', 'K-medoids', ...
               'Units', 'Normalized', 'Position', [0.1, 0.4, 1, 0.15]);
+    uicontrol('Parent', btngrp, 'Style', 'radiobutton', 'String', 'Density peak (CUDA if enabled)', ...
+              'Units', 'Normalized', 'Position', [0.1, 0.25, 1, 0.15]);
 
     uicontrol('Parent', splitDlg, 'Style', 'pushbutton', ...
               'String', 'Split', ...
               'Units', 'Normalized', ...
               'Position', [0.4 0.1 0.2 0.15], ...
-              'Callback', @(hO, hE) preSplit(splitDlg, nsplit.String, btngrp, hFigSplit));
+              'Callback', @(hO, hE) preSplit(splitDlg, nsplit.String, btngrp, hFigSplit, obj.hCfg));
     uicontrol('Parent', splitDlg, 'Style', 'pushbutton', ...
               'String', 'Cancel', ...
               'Units', 'Normalized', ...
@@ -152,8 +155,9 @@ function autoSplit(obj, multisite)
         hFigSplit.figData.pcaFeatures = pcaFeatures;
         hFigSplit.figData.clusterTimes = double(clusterTimes)/obj.hCfg.sampleRate;
         hFigSplit.figData.localVpp = double(localVpp');
-        hFigSplit.figData.assignPart = arrayfun(@(i) find(assigns == i)', 1:max(assigns), 'UniformOutput', 0);
+        hFigSplit.figData.assignPart = normalizeAssignPart(assigns);
         hFigSplit.figData.localSpikes = localSpikes;
+        syncSplitControls(hFigSplit);
 
         jrclust.utils.tryClose(hBox);
 
@@ -188,7 +192,11 @@ function [assigns, pcaFeatures] = doAutoSplit(sampledSpikes, spikeFeatures, hFig
 
     % ask how many clusters there are
     try
-        combinedFeatures = (combinedFeatures - mean(combinedFeatures, 1)) ./ std(combinedFeatures, 1);
+        featureScale = std(combinedFeatures, 1);
+        constantFeatures = featureScale == 0 | ~isfinite(featureScale);
+        featureScale(constantFeatures) = 1;
+        combinedFeatures = (combinedFeatures - mean(combinedFeatures, 1)) ./ featureScale;
+        combinedFeatures(:, constantFeatures) = 0;
         assigns = hFigSplit.figData.hFunSplit(combinedFeatures);
     catch % not enough features to automatically split or some other failure
         assigns = ones(nSpikes, 1);
@@ -200,7 +208,7 @@ function doCancel(splitDlg, hFigSplit)
     hFigSplit.figData.nSplits = 0;
 end
 
-function preSplit(splitDlg, nsplit, btngrp, hFigSplit)
+function preSplit(splitDlg, nsplit, btngrp, hFigSplit, hCfg)
     whichSelected = logical(arrayfun(@(child) child.Value, btngrp.Children));
     selected = btngrp.Children(whichSelected);
 
@@ -208,12 +216,16 @@ function preSplit(splitDlg, nsplit, btngrp, hFigSplit)
     if isnan(nsplit)
         nsplit = 2;
     end
+    nsplit = max(2, nsplit);
 
     switch selected.String
         case 'K-means'
             hFigSplit.figData.hFunSplit = @(X) kmeans(X, nsplit);
         case 'K-medoids'
             hFigSplit.figData.hFunSplit = @(X) kmedoids(X, nsplit);
+        case 'Density peak (CUDA if enabled)'
+            hFigSplit.figData.hFunSplit = @(X) densityPeakSplit( ...
+                X, hFigSplit.figData.clusterTimesRaw, hCfg, nsplit);
         otherwise
             hFigSplit.figData.hFunSplit = @(X) clusterdata(X, ...
                                                            'maxclust', nsplit, ...
@@ -225,6 +237,123 @@ function preSplit(splitDlg, nsplit, btngrp, hFigSplit)
     delete(splitDlg)
 
     hFigSplit.figData.nSplits = nsplit;
+end
+
+function assigns = densityPeakSplit(features, spikeTimes, hCfg, nsplit)
+    nSpikes = size(features, 1);
+    assigns = ones(nSpikes, 1);
+
+    if nSpikes < nsplit
+        return;
+    end
+
+    dRes = struct();
+    dRes.spikeFeatures = reshape(single(features'), size(features, 2), 1, nSpikes);
+    dRes.spikeTimes = double(spikeTimes(:));
+    dRes.spikeSites = ones(nSpikes, 1, 'int32');
+    dRes.spikesBySite = {int32((1:nSpikes)')};
+
+    useGPU = logical(hCfg.useGPU);
+    tempKeys = {'siteMap', 'siteLoc', 'siteNeighbors', ...
+                'useGlobalDistCut', 'weightFeatures', ...
+                'minClusterSize', 'verbose', 'useGPU'};
+    tempArgs = {'siteMap', 1, ...
+                'siteLoc', [0 0], ...
+                'siteNeighbors', 1, ...
+                'useGlobalDistCut', 0, ...
+                'weightFeatures', 0, ...
+                'minClusterSize', 1, ...
+                'verbose', 0, ...
+                'useGPU', useGPU};
+    if isprop(hCfg, 'timeFeatureFactor')
+        tempKeys{end + 1} = 'timeFeatureFactor';
+        tempArgs(end + 1:end + 2) = {'timeFeatureFactor', 0};
+    end
+    hCfg.setTemporaryParams(tempArgs{:});
+    cleanupObj = onCleanup(@() hCfg.resetTemporaryParams(tempKeys)); %#ok<NASGU>
+
+    try
+        try
+            sRes = runDensityPeak(dRes, hCfg, nSpikes);
+        catch gpuME
+            if ~useGPU
+                rethrow(gpuME);
+            end
+
+            warning('JRCLUST:DensityPeakGPUFallback', ...
+                    'Density-peak CUDA path failed; retrying on CPU: %s', gpuME.message);
+            hCfg.useGPU = 0;
+            sRes = runDensityPeak(dRes, hCfg, nSpikes);
+        end
+
+        clusterIds = unique(sRes.spikeClusters(:)');
+        clusterIds(clusterIds <= 0) = [];
+        if isempty(clusterIds)
+            error('JRCLUST:DensityPeakNoClusters', 'Density-peak clustering produced no clusters.');
+        end
+
+        counts = arrayfun(@(id) sum(sRes.spikeClusters == id), clusterIds);
+        [~, order] = sort(counts, 'descend');
+        clusterIds = clusterIds(order);
+
+        nKeep = min(nsplit, numel(clusterIds));
+        remapped = zeros(size(sRes.spikeClusters), 'like', sRes.spikeClusters);
+        for i = 1:nKeep
+            remapped(sRes.spikeClusters == clusterIds(i)) = i;
+        end
+        remapped(remapped == 0) = nKeep;
+        assigns = double(remapped(:));
+
+        if numel(unique(assigns)) < 2
+            error('JRCLUST:DensityPeakCollapsed', 'Density-peak clustering collapsed to one cluster.');
+        end
+    catch ME
+        warning('JRCLUST:DensityPeakFallback', ...
+                'Density-peak split failed; using k-means instead: %s', ME.message);
+        try
+            assigns = kmeans(features, nsplit, 'Replicates', 3);
+        catch
+            assigns = ones(nSpikes, 1);
+        end
+    end
+end
+
+function sRes = runDensityPeak(dRes, hCfg, nSpikes)
+    sRes = struct('spikeRho', zeros(nSpikes, 1, 'single'), ...
+                  'spikeDelta', zeros(nSpikes, 1, 'single'), ...
+                  'spikeNeigh', zeros(nSpikes, 1, 'uint32'));
+    sRes = jrclust.sort.computeRho(dRes, sRes, hCfg);
+    sRes = jrclust.sort.computeDelta(dRes, sRes, hCfg);
+    [~, sRes.ordRho] = sort(sRes.spikeRho, 'descend');
+    sRes = jrclust.sort.assignClusters(dRes, sRes, hCfg);
+end
+
+function assignPart = normalizeAssignPart(assigns)
+    assigns = double(assigns(:));
+    groupIds = unique(assigns(:)');
+    groupIds(groupIds <= 0 | isnan(groupIds)) = [];
+
+    if isempty(groupIds)
+        assignPart = {(1:numel(assigns))'};
+        return;
+    end
+
+    assignPart = arrayfun(@(id) find(assigns == id)', groupIds, 'UniformOutput', 0);
+    assignPart = assignPart(~cellfun(@isempty, assignPart));
+end
+
+function syncSplitControls(hFigSplit)
+    assignPart = hFigSplit.figData.assignPart;
+    nSplits = max(1, numel(assignPart));
+    clustList = hFigSplit.figData.clustList;
+
+    selected = get(clustList, 'Value');
+    selected = selected(selected >= 1 & selected <= nSplits);
+    if isempty(selected)
+        selected = 1;
+    end
+
+    set(clustList, 'String', num2str((1:nSplits)'), 'Value', selected);
 end
 
 function updateSplitPlots(hFigSplit)
@@ -240,6 +369,11 @@ function updateSplitPlots(hFigSplit)
     nSplits = numel(assignPart);
 
     selectedClusters = get(clustList, 'Value');
+    selectedClusters = selectedClusters(selectedClusters >= 1 & selectedClusters <= nSplits);
+    if isempty(selectedClusters)
+        selectedClusters = 1;
+        set(clustList, 'Value', selectedClusters);
+    end
     selectedSpikes = sort([assignPart{selectedClusters}]);
 
     cmap = [0, 0.4470, 0.7410; 0.8500, 0.3250, 0.0980; 0.9290, 0.6940, 0.1250; 0.4940, 0.1840, 0.5560; 0.4660, 0.6740, 0.1880; 0.3010, 0.7450, 0.9330; 0.6350, 0.0780, 0.1840];

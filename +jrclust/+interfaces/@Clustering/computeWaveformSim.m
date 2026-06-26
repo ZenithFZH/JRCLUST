@@ -61,16 +61,17 @@ function computeWaveformSim(obj, updateMe)
                       'fMode_cor', fMode_cor);
 
     if isempty(updateMe) % update everything
-        useParfor = 1;
         scoreData.updateMe = true(obj.nClusters, 1);
         scoreData.simScoreOld = [];
     else
-        useParfor = 0;
         scoreData.updateMe = false(obj.nClusters, 1);
         scoreData.updateMe(updateMe) = 1;
         scoreData.simScoreOld = obj.waveformSim;
         scoreData.updateMe((1:obj.nClusters) > size(scoreData.simScoreOld, 1)) = 1;
     end
+
+    % Manual split/merge commits pass updateMe; parallelize those updates too.
+    useParfor = obj.hCfg.useParfor;
 
     if useParfor
         % avoid sending the entire hCfg object out to workers
