@@ -239,7 +239,7 @@ function preSplit(splitDlg, nsplit, btngrp, hFigSplit, hCfg)
     hFigSplit.figData.nSplits = nsplit;
 end
 
-function assigns = densityPeakSplit(function assigns = densityPeakSplit(features, spikeTimes, hCfg, nsplit)
+function assigns = densityPeakSplit(features, spikeTimes, hCfg, nsplit)
     % Use the manual-curation density-peak implementation directly.
     %
     % The full JRCLUST sorting rho/delta path expects a full detected-spike
@@ -375,7 +375,7 @@ function distances = pairwiseSquaredDistancesCPU(features)
     distances = max(distances, 0);
 end
 
-nPart(assigns)
+function assignPart = normalizeAssignPart(assigns)
     assigns = double(assigns(:));
     groupIds = unique(assigns(:)');
     groupIds(groupIds <= 0 | isnan(groupIds)) = [];
