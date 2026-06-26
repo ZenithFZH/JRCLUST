@@ -184,7 +184,11 @@ function bootstrap(obj, varargin)
     end
 
     obj.hCfg = hCfg_;
-    obj.hCfg.edit();
+    if ask && usejava('desktop')
+        obj.hCfg.edit();
+    else
+	fprintf('Created configuration file: %s\n', obj.hCfg.configFile);
+    end
 end
 
 %% LOCAL FUNCTIONS
