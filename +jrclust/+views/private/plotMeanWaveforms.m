@@ -44,7 +44,8 @@ function hFigWav = plotMeanWaveforms(hFigWav, hClust, maxAmp, channel_idx)
     end
 
     if ~hFigWav.hasPlot('hGroup1')
-        plotGroup(hFigWav, XData, YData, 'LineWidth', hCfg.getOr('LineWidth', 1));
+        plotGroup(hFigWav, XData, YData, showSubset, hClust.nClusters, ...
+                  'LineWidth', hCfg.getOr('LineWidth', 1));
     else
         %updateGroup(hFigWav, XData, YData); % this is broken
         plotKeys = keys(hFigWav.hPlots);
@@ -52,7 +53,8 @@ function hFigWav = plotMeanWaveforms(hFigWav, hClust, maxAmp, channel_idx)
         if ~isempty(hGroup)
             cellfun(@(plotKey) hFigWav.rmPlot(plotKey), hGroup);
         end
-        plotGroup(hFigWav, XData, YData, 'LineWidth', hCfg.getOr('LineWidth', 1));
+        plotGroup(hFigWav, XData, YData, showSubset, hClust.nClusters, ...
+                  'LineWidth', hCfg.getOr('LineWidth', 1));
     end
 
     hFigWav.axApply('default', @set, 'YTick', 1:nSites, 'XTick', 1:nClusters);
@@ -70,16 +72,17 @@ function updateGroup(hFig, XData, YData)
     end
 end
 
-function plotGroup(hFig, XData, YData, varargin)
+function plotGroup(hFig, XData, YData, clusterIds, nClusters, varargin)
     %PLOTGROUP Plot XData and YData colored by groups
-    colorMap = [0, 0.4470, 0.7410; 0.8500, 0.3250, 0.0980; 0.9290, 0.6940, 0.1250; 0.4940, 0.1840, 0.5560; 0.4660, 0.6740, 0.1880; 0.3010, 0.7450, 0.9330; 0.6350, 0.0780, 0.1840]';
-    nGroups = min(size(colorMap, 2), size(XData, 2));
-    colorMap = colorMap(:, 1:nGroups);
+    colorMap = [lines(nClusters); 0 0 0];
+    nGroups = size(XData, 2);
 
     hFig.axApply('default', @hold, 'on');
     for iGroup = 1:nGroups
-        iXData = XData(:, iGroup:nGroups:end);
-        iYData = YData(:, iGroup:nGroups:end);
-        hFig.addPlot(sprintf('hGroup%d', iGroup), iXData(:), iYData(:), varargin{:}, 'Color', colorMap(:, iGroup)');
+        iXData = XData(:, iGroup);
+        iYData = YData(:, iGroup);
+        iCluster = clusterIds(iGroup);
+        hFig.addPlot(sprintf('hGroup%d', iGroup), iXData(:), iYData(:), ...
+                     varargin{:}, 'Color', colorMap(iCluster, :));
     end
 end

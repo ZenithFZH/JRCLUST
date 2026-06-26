@@ -1,6 +1,9 @@
 function tracesFilt = plotFigTraces(hFigTraces, hCfg, tracesRaw, resetAxis, hClust)
     %PLOTFIGTRACES Plot raw traces view
-    hBox = jrclust.utils.qMsgBox('Plotting...', 0, 1);
+    hBox = [];
+    if hCfg.getOr('showTraceProgressBox', 0)
+        hBox = jrclust.utils.qMsgBox('Plotting...', 0, 1);
+    end
 
     hFigTraces.wait(1);
 
@@ -19,7 +22,7 @@ function tracesFilt = plotFigTraces(hFigTraces, hCfg, tracesRaw, resetAxis, hClu
         hCfg.filterType = hCfg.dispFilter;
 
         if hCfg.fftThresh > 0
-            tracesRaw = jrclust.filters.fftClean(tracesRaw, hCft.fftThresh, hCfg);
+            tracesRaw = jrclust.filters.fftClean(tracesRaw, hCfg.fftThresh, hCfg);
         end
 
         tracesFilt = jrclust.filters.filtCAR(tracesRaw(:, viSamples1), [], [], 0, hCfg);
@@ -81,7 +84,7 @@ function tracesFilt = plotFigTraces(hFigTraces, hCfg, tracesRaw, resetAxis, hClu
             offset = sum(cellfun(@(hR) hR.nSamples, hRecs));
         end
 
-        recTimes = hClust.spikeTimes - uint64(offset);
+	recTimes = double(hClust.spikeTimes) - double(offset);
 
         tStart = single(hFigTraces.figData.windowBounds(1) - 1)/hCfg.sampleRate;
         if hCfg.nSegmentsTraces > 1
@@ -117,35 +120,36 @@ function tracesFilt = plotFigTraces(hFigTraces, hCfg, tracesRaw, resetAxis, hClu
 
                 hFigTraces.multiplot(plotKey, hFigTraces.figData.maxAmp, mrT11, mrY11, iSite);
             end
-        else % different color for each cluster
+        else % batch spikes by cluster to keep the trace GUI responsive
             inRangeClusters = hClust.spikeClusters(spikesInRange);
-            spikeColors = [jet(hClust.nClusters); 0 0 0];
-            lineWidths = (mod((1:hClust.nClusters) - 1, 3) + 1)'/2 + 0.5;  %(randi(3, S_clu.nClusters, 1)+1)/2;
+            spikeColors = [lines(hClust.nClusters); 0 0 0];
+            uniqueClusters = unique(inRangeClusters(inRangeClusters > 0));
+            winLen = evtWindowSamp(end) - evtWindowSamp(1) + 1;
 
-            % shuffle colors
-            spikeColors = spikeColors(randperm(size(spikeColors, 1)), :);
-            lineWidths = lineWidths(randperm(size(lineWidths, 1)), :);
+            for iClu = 1:numel(uniqueClusters)
+                iCluster = uniqueClusters(iClu);
+                clusterMask = inRangeClusters == iCluster;
+                clusterTimes = spikeTimes(clusterMask);
+                clusterSites = double(spikeSites(clusterMask));
+                nClusterSpikes = numel(clusterTimes);
 
-            nSpikes = numel(spikeTimes);
-
-            for iSpike = 1:nSpikes
-                iCluster = inRangeClusters(iSpike);
-                if iCluster <= 0
-                    continue;
+                % One line object per cluster, with NaNs separating waveforms.
+                batchX = nan(winLen + 1, nClusterSpikes);
+                batchY = nan(winLen + 1, nClusterSpikes);
+                for iSpike = 1:nClusterSpikes
+                    iSite = clusterSites(iSpike);
+                    [spikeTrace, spikeRange] = vr2mr3_( ...
+                        tracesFilt(iSite, :), clusterTimes(iSpike), evtWindowSamp);
+                    nSamples = numel(spikeRange);
+                    batchX(1:nSamples, iSpike) = ...
+                        double(spikeRange(:) - 1) / sampleRate + tStart;
+                    batchY(1:nSamples, iSpike) = ...
+                        double(spikeTrace(:)) / hFigTraces.figData.maxAmp + iSite;
                 end
 
-                iTime = spikeTimes(iSpike);
-                iSite = spikeSites(iSpike);
-                iColor = spikeColors(iCluster, :);
-                iLinewidth = lineWidths(iCluster);
-
-                [mrY11, mrX11] = vr2mr3_(tracesFilt(iSite, :), iTime, evtWindowSamp); %display purpose x2
-                mrT11 = double(mrX11-1) / sampleRate + tStart;
-
-                plotKey = sprintf('chSpk%d', iSpike);
-                hFigTraces.addPlot(plotKey, @line, ...
-                                   nan, nan, 'Color', iColor, 'LineWidth', iLinewidth);
-                hFigTraces.multiplot(plotKey, hFigTraces.figData.maxAmp, mrT11, mrY11, iSite);
+                plotKey = sprintf('chSpk%d', iCluster);
+                hFigTraces.addPlot(plotKey, @line, batchX(:), batchY(:), ...
+                                   'Color', spikeColors(iCluster, :), 'LineWidth', 2);
             end
         end
     end

@@ -57,8 +57,12 @@ nClusterIntervals = 4; % (formerly nTime_clu) Number of intervals to divide the 
 dispTimeLimits = [0, 0.2]; % (formerly tlim) Time range (in ms) to display
 nSpikesFigProj = 500; % (formerly nShow_proj) Maximum number of spikes per cluster to display in the feature projection view
 nSpikesFigWav = 30; % (formerly nSpk_show) Maximum number of spikes per cluster to display generally
+% For MATLAB R2025a+ or remote desktop sessions, uncomment these to reduce GUI load:
+% modernGuiMode = 1;
+% modernFigList = {'FigWav', 'FigSim', 'FigProj', 'FigTime', 'FigISI', 'FigCorr', 'FigHist'};
+% useModernROI = 1;
+% showSpikesTraces = 1;
 
 % TRIAL PARAMETERS
 psthTimeLimits = []; % (formerly tlim_psth) Time range (in s) over which to display PSTH
 trialFile = ''; % (formerly vcFile_trial) Path to file containing trial data (Can be .mat or .csv, must contain timestamps of trials in units of s)
-

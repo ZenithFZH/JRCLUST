@@ -31,9 +31,7 @@ function hFigTime = plotFigTime(hFigTime, hClust, hCfg, selected, maxAmp, iSite,
 
         % rectangle plot
         rectPos = [timeLimits(1), maxAmp, diff(timeLimits), maxAmp];
-        hFigTime.addPlot('hRect', @imrect, rectPos);
-        hFigTime.plotApply('hRect', @setColor, 'r');
-        hFigTime.plotApply('hRect', @setPositionConstraintFcn, makeConstrainToRectFcn('imrect', timeLimits, [-4000 4000]));
+        hFigTime.addPlot('hRect', @createTimeRangeROI, rectPos, timeLimits, hCfg);
 
         hFigTime.setHideOnDrag('background'); % hide background spikes when dragging
         
@@ -100,4 +98,26 @@ function hFigTime = plotFigTime(hFigTime, hClust, hCfg, selected, maxAmp, iSite,
     hFigTime.axApply('default', @axis, [timeLimits, vppLim]);
     hFigTime.axApply('default', @title, figTitle);
     hFigTime.axApply('default', @ylabel, YLabel);
+end
+
+function hRect = createTimeRangeROI(hAx, rectPos, timeLimits, hCfg)
+    useModernROI = hCfg.getOr('useModernROI', 1);
+
+    if useModernROI && exist('drawrectangle', 'file') == 2
+        try
+            hRect = drawrectangle(hAx, ...
+                                  'Position', rectPos, ...
+                                  'Color', 'r', ...
+                                  'FaceAlpha', 0, ...
+                                  'LineWidth', 0.75, ...
+                                  'DrawingArea', [timeLimits(1), -4000, diff(timeLimits), 8000], ...
+                                  'InteractionsAllowed', 'translate');
+            return;
+        catch
+        end
+    end
+
+    hRect = imrect(hAx, rectPos);
+    setColor(hRect, 'r');
+    setPositionConstraintFcn(hRect, makeConstrainToRectFcn('imrect', timeLimits, [-4000 4000]));
 end
