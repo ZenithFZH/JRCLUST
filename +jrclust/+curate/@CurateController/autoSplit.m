@@ -308,12 +308,99 @@ function assigns = densityPeakSplit(features, spikeTimes, hCfg, nsplit)
             error('JRCLUST:DensityPeakCollapsed', 'Density-peak clustering collapsed to one cluster.');
         end
     catch ME
-        warning('JRCLUST:DensityPeakFallback', ...
+        try
+            assigns = localDensityPeakSplit(features, spikeTimes, hCfg, nsplit);
+            if numel(unique(assigns)) >= 2
+                warning('JRCLUST:DensityPeakLocalFallback', ...
+                        'Density-peak JRCLUST path failed; used local density-peak fallback instead: %s', ME.message);
+                return;
+            end
+        catch localME
+            warning('JRCLUST:DensityPeakLocalFallbackFailed', ...
+                    'Local density-peak fallback failed: %s', localME.message);
+        end
+
+        warning('JRCLUST:DensityPeakKMeansFallback', ...
                 'Density-peak split failed; using k-means instead: %s', ME.message);
         try
             assigns = kmeans(features, nsplit, 'Replicates', 3);
         catch
             assigns = ones(nSpikes, 1);
+        end
+    end
+end
+
+function assigns = localDensityPeakSplit(features, spikeTimes, hCfg, nsplit)
+    nSpikes = size(features, 1);
+    assigns = ones(nSpikes, 1);
+    if nSpikes < nsplit
+        return;
+    end
+
+    features = double(features);
+    featureScale = std(features, 1);
+    featureScale(featureScale == 0 | ~isfinite(featureScale)) = 1;
+    features = (features - mean(features, 1)) ./ featureScale;
+    features(:, ~all(isfinite(features), 1)) = 0;
+
+    distances = pdist2(features, features, 'squaredeuclidean');
+    distances(1:nSpikes + 1:end) = inf;
+
+    finiteDistances = distances(isfinite(distances));
+    if isempty(finiteDistances)
+        return;
+    end
+
+    distCut = hCfg.getOr('distCut', 2) / 100;
+    dc = quantile(finiteDistances, min(max(distCut, eps), 1));
+    if ~isfinite(dc) || dc <= 0
+        dc = median(finiteDistances);
+    end
+    if ~isfinite(dc) || dc <= 0
+        return;
+    end
+
+    rho = sum(exp(-distances ./ dc), 2);
+
+    % Prefer temporally nearby parent assignments when spike times are available.
+    if ~isempty(spikeTimes) && numel(spikeTimes) == nSpikes
+        spikeTimes = double(spikeTimes(:));
+        timeWindow = max(1, round(nSpikes / max(1, hCfg.getOr('nClusterIntervals', 4))));
+        timeOrder = jrclust.utils.rankorder(spikeTimes, 'ascend');
+        farInTime = abs(bsxfun(@minus, timeOrder, timeOrder')) > timeWindow;
+        parentDistances = distances;
+        parentDistances(farInTime) = inf;
+    else
+        parentDistances = distances;
+    end
+
+    [~, rhoOrder] = sort(rho, 'descend');
+    delta = inf(nSpikes, 1);
+    nearestHigher = zeros(nSpikes, 1);
+    delta(rhoOrder(1)) = max(sqrt(finiteDistances));
+    nearestHigher(rhoOrder(1)) = rhoOrder(1);
+
+    for i = 2:nSpikes
+        iSpike = rhoOrder(i);
+        higher = rhoOrder(1:i - 1);
+        [delta(iSpike), iNearest] = min(parentDistances(iSpike, higher));
+        if ~isfinite(delta(iSpike))
+            [delta(iSpike), iNearest] = min(distances(iSpike, higher));
+        end
+        nearestHigher(iSpike) = higher(iNearest);
+    end
+
+    score = rho(:) .* sqrt(delta(:));
+    score(~isfinite(score)) = -inf;
+    [~, centerOrder] = sort(score, 'descend');
+    centers = centerOrder(1:min(nsplit, nSpikes));
+
+    assigns = zeros(nSpikes, 1);
+    assigns(centers) = 1:numel(centers);
+    for i = 1:nSpikes
+        iSpike = rhoOrder(i);
+        if assigns(iSpike) == 0
+            assigns(iSpike) = assigns(nearestHigher(iSpike));
         end
     end
 end
