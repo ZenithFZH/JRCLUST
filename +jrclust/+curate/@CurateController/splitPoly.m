@@ -9,35 +9,9 @@ function success = splitPoly(obj, hFig, shift)
 
     iCluster = obj.selected;
 
-    if shift
-        hFig.addPlot('hPoly', @imrect);
+    polyPos = hFig.axApply('default', @getSplitPolygonPosition, shift);
 
-        try
-            polyPos = hFig.plotApply('hPoly', @getPosition);
-        catch ME
-            hFig.rmPlot('hPoly');
-            return;
-        end
-
-        if isempty(polyPos)
-            return;
-        end
-
-        xpos = [repmat(polyPos(1), 2, 1); repmat(polyPos(1) + polyPos(3), 2, 1)];
-        ypos = [polyPos(2); repmat(polyPos(2) + polyPos(4), 2, 1); polyPos(2)];
-        polyPos = [xpos ypos];
-    else
-        hFig.addPlot('hPoly', @impoly);
-        try
-            polyPos = hFig.plotApply('hPoly', @getPosition);
-        catch ME
-            hFig.rmPlot('hPoly');
-            return;
-        end
-    end
-
-    if isempty(polyPos)
-        hFig.rmPlot('hPoly');
+    if isempty(polyPos) || size(polyPos, 1) < 3
         return;
     end
 
@@ -96,4 +70,101 @@ function success = splitPoly(obj, hFig, shift)
     end
     
     success = 1;
+end
+
+function polyPos = getSplitPolygonPosition(hAx, shift)
+    polyPos = [];
+    hRoi = [];
+
+    if shift
+        try
+            if exist('drawrectangle', 'file') == 2
+                hRoi = drawrectangle(hAx, 'Color', 'r', 'FaceAlpha', 0, 'LineWidth', 0.75);
+                try
+                    rectPos = wait(hRoi);
+                catch
+                    rectPos = [];
+                end
+                if isempty(rectPos) && isvalid(hRoi) && isprop(hRoi, 'Position')
+                    rectPos = hRoi.Position;
+                end
+                polyPos = rectToPolygon(rectPos);
+                deleteRoi(hRoi);
+                return;
+            end
+        catch
+            deleteRoi(hRoi);
+            polyPos = [];
+        end
+
+        try
+            hRoi = imrect(hAx);
+            try
+                rectPos = wait(hRoi);
+            catch
+                rectPos = getPosition(hRoi);
+            end
+            polyPos = rectToPolygon(rectPos);
+        catch
+            polyPos = [];
+        end
+        deleteRoi(hRoi);
+        return;
+    end
+
+    try
+        if exist('drawpolygon', 'file') == 2
+            hRoi = drawpolygon(hAx, 'Color', 'r', 'FaceAlpha', 0, 'LineWidth', 0.75);
+            try
+                roiPos = wait(hRoi);
+            catch
+                roiPos = [];
+            end
+            if isempty(roiPos) && isvalid(hRoi) && isprop(hRoi, 'Position')
+                roiPos = hRoi.Position;
+            end
+            polyPos = roiPos;
+            deleteRoi(hRoi);
+            return;
+        end
+    catch
+        deleteRoi(hRoi);
+        polyPos = [];
+    end
+
+    try
+        hRoi = impoly(hAx);
+        try
+            polyPos = wait(hRoi);
+        catch
+            polyPos = getPosition(hRoi);
+        end
+    catch
+        polyPos = [];
+    end
+    deleteRoi(hRoi);
+end
+
+function polyPos = rectToPolygon(rectPos)
+    if isempty(rectPos) || numel(rectPos) < 4
+        polyPos = [];
+        return;
+    end
+
+    xpos = [repmat(rectPos(1), 2, 1); repmat(rectPos(1) + rectPos(3), 2, 1)];
+    ypos = [rectPos(2); repmat(rectPos(2) + rectPos(4), 2, 1); rectPos(2)];
+    polyPos = [xpos ypos];
+end
+
+function deleteRoi(hRoi)
+    try
+        if ~isempty(hRoi) && isvalid(hRoi)
+            delete(hRoi);
+        end
+    catch
+        try
+            delete(hRoi);
+        catch
+        end
+    end
 end

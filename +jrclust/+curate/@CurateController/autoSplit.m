@@ -727,12 +727,14 @@ function polyPos = getManualPolygonPosition(hAx)
         if exist('drawpolygon', 'file') == 2
             hPoly = drawpolygon(hAx, 'LineWidth', 1);
             try
-                wait(hPoly);
+                roiPos = wait(hPoly);
             catch
+                roiPos = [];
             end
-            if isvalid(hPoly) && isprop(hPoly, 'Position')
-                polyPos = hPoly.Position;
+            if isempty(roiPos) && isvalid(hPoly) && isprop(hPoly, 'Position')
+                roiPos = hPoly.Position;
             end
+            polyPos = roiPos;
             deleteRoi(hPoly);
             return;
         end
