@@ -689,12 +689,11 @@ function manualSplit(hFigSplit, pcPair)
 
     hFigSplit.axApply(axKey, @hold, 'on');
 
-    % clear axes
-    hPoly = hFigSplit.axApply(axKey, @impoly);
-    polyPos = getPosition(hPoly);
-    try
-        delete(hPoly);
-    catch
+    % draw split polygon
+    polyPos = hFigSplit.axApply(axKey, @getManualPolygonPosition);
+    if isempty(polyPos) || size(polyPos, 1) < 3
+        jrclust.utils.qMsgBox('Manual split cancelled: draw a polygon with at least three vertices.');
+        return;
     end
 
     % partition spikes by polygon
@@ -718,6 +717,58 @@ function manualSplit(hFigSplit, pcPair)
     end
 
     hFigSplit.figApply(@uiwait);
+end
+
+function polyPos = getManualPolygonPosition(hAx)
+    polyPos = [];
+    hPoly = [];
+
+    try
+        if exist('drawpolygon', 'file') == 2
+            hPoly = drawpolygon(hAx, 'LineWidth', 1);
+            try
+                wait(hPoly);
+            catch
+            end
+            if isvalid(hPoly) && isprop(hPoly, 'Position')
+                polyPos = hPoly.Position;
+            end
+            deleteRoi(hPoly);
+            return;
+        end
+    catch
+        deleteRoi(hPoly);
+        polyPos = [];
+    end
+
+    try
+        hPoly = impoly(hAx);
+        try
+            polyPos = wait(hPoly);
+        catch
+            try
+                polyPos = getPosition(hPoly);
+            catch
+                polyPos = [];
+            end
+        end
+    catch
+        polyPos = [];
+    end
+    deleteRoi(hPoly);
+end
+
+function deleteRoi(hRoi)
+    try
+        if ~isempty(hRoi) && isvalid(hRoi)
+            delete(hRoi);
+        end
+    catch
+        try
+            delete(hRoi);
+        catch
+        end
+    end
 end
 
 function mergeSelected(hFigSplit)

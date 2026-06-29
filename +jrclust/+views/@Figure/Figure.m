@@ -280,6 +280,7 @@ classdef Figure < handle
         function vals = axApply(obj, axKey, hFun, varargin)
             %AXAPPLY Apply a function to current axes
             if ~obj.hasAxes(axKey)
+                vals = [];
                 return;
             end
 
@@ -343,6 +344,21 @@ classdef Figure < handle
         function hp = hasAxes(obj, axKey)
             %HASAXES Return true iff a plot exists with plotKey as label
             hp = ischar(axKey) && isKey(obj.hAxes, axKey);
+
+            % clean up dead axes handles left behind by MATLAB GUI refreshes
+            if hp
+                try
+                    if isempty(obj.hAxes(axKey)) || ~all(isvalid(obj.hAxes(axKey)))
+                        hp = 0;
+                        remove(obj.hAxes, axKey);
+                    end
+                catch
+                    hp = 0;
+                    if isKey(obj.hAxes, axKey)
+                        remove(obj.hAxes, axKey);
+                    end
+                end
+            end
         end
 
         function hp = hasPlot(obj, plotKey)
