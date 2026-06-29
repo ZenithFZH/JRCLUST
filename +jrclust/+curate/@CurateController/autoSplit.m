@@ -183,12 +183,13 @@ function autoSplit(obj, multisite)
         end
     end
 
-    hFigSplit.close();
+    closeSplitFigure(hFigSplit);
 
     obj.isWorking = 0;
     if ~isempty(unitPart)
         obj.splitCluster(iCluster, unitPart);
     end
+    closeStaleSplitFigures();
 end
 
 %% LOCAL FUNCTIONS
@@ -221,6 +222,26 @@ function doCancel(splitDlg, hFigSplit)
     catch
     end
     delete(splitDlg);
+end
+
+function closeSplitFigure(hFigSplit)
+    try
+        hFigSplit.figApply(@delete);
+    catch
+        try
+            hFigSplit.close();
+        catch
+        end
+    end
+    closeStaleSplitFigures();
+end
+
+function closeStaleSplitFigures()
+    try
+        delete(findall(groot, 'Type', 'figure', 'Tag', 'FigSplit'));
+    catch
+    end
+    drawnow limitrate;
 end
 
 function preSplit(splitDlg, nsplit, btngrp, hFigSplit, hCfg)
