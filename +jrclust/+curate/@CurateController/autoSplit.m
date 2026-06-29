@@ -151,12 +151,14 @@ function autoSplit(obj, multisite)
     hFigSplit.figData.finished = 0;
     hFigSplit.figData.currentSite = obj.currentSite;
     hFigSplit.figData.refracInt = obj.hCfg.refracInt/1000;
+    hFigSplit.figData.manualSplitOff = [];
     while 1
         [assigns, pcaFeatures] = doAutoSplit(sampledTraces, [double(clusterTimes) double(localVpp')], hFigSplit); %TW
         hFigSplit.figData.pcaFeatures = pcaFeatures;
         hFigSplit.figData.clusterTimes = double(clusterTimes)/obj.hCfg.sampleRate;
         hFigSplit.figData.localVpp = double(localVpp');
         hFigSplit.figData.assignPart = normalizeAssignPart(assigns);
+        hFigSplit.figData.manualSplitOff = [];
         hFigSplit.figData.localSpikes = localSpikes;
         syncSplitControls(hFigSplit);
 
@@ -165,10 +167,15 @@ function autoSplit(obj, multisite)
         updateSplitPlots(hFigSplit);
         hFigSplit.figApply(@uiwait);
         if ~hFigSplit.isReady % user closed the window
-            assignPart = [];
+            unitPart = [];
             break;
         elseif hFigSplit.figData.finished
-            assignPart = hFigSplit.figData.assignPart; 
+            if isfield(hFigSplit.figData, 'manualSplitOff') && ~isempty(hFigSplit.figData.manualSplitOff)
+                unitPart = hFigSplit.figData.manualSplitOff;
+            else
+                assignPart = hFigSplit.figData.assignPart;
+                unitPart = assignPart(2:end);
+            end
             break;
         end
     end
@@ -176,8 +183,8 @@ function autoSplit(obj, multisite)
     hFigSplit.close();
 
     obj.isWorking = 0;
-    if numel(assignPart) > 1
-        obj.splitCluster(iCluster, assignPart(2:end));
+    if ~isempty(unitPart)
+        obj.splitCluster(iCluster, unitPart);
     end
 end
 
@@ -703,12 +710,21 @@ function manualSplit(hFigSplit, pcPair)
 
     % partition spikes by polygon
     assigns = inpolygon(featuresX, featuresY, polyPos(:, 1), polyPos(:, 2));
-    assignPart = {find(~assigns), find(assigns)};
+    outsidePolygon = find(~assigns);
+    insidePolygon = find(assigns);
+    if isempty(outsidePolygon) || isempty(insidePolygon)
+        jrclust.utils.qMsgBox('Manual split cancelled: polygon must leave spikes both inside and outside.');
+        return;
+    end
+
+    assignPart = {outsidePolygon, insidePolygon};
     assignPartOld = hFigSplit.figData.assignPart;
+    manualSplitOffOld = hFigSplit.figData.manualSplitOff;
 
     % update plots
     nSplits = 2;
     hFigSplit.figData.assignPart = assignPart;
+    hFigSplit.figData.manualSplitOff = {insidePolygon};
     set(hFigSplit.figData.clustList, 'String', num2str((1:nSplits)'), 'Value', 1);
     updateSplitPlots(hFigSplit);
 
@@ -717,6 +733,7 @@ function manualSplit(hFigSplit, pcPair)
         case {'No', 'Cancel'}
             nSplits = numel(assignPartOld);
             hFigSplit.figData.assignPart = assignPartOld;
+            hFigSplit.figData.manualSplitOff = manualSplitOffOld;
             set(hFigSplit.figData.clustList, 'String', num2str((1:nSplits)'), 'Value', 1);
             updateSplitPlots(hFigSplit);
     end
@@ -788,6 +805,7 @@ function mergeSelected(hFigSplit)
         merged = {sort([hFigSplit.figData.assignPart{selectedClusters}])};
 
         hFigSplit.figData.assignPart = cat(2, merged, unmerged);
+        hFigSplit.figData.manualSplitOff = [];
 
         nSplits = 1 + numel(unmerged);
         set(hFigSplit.figData.clustList, 'String', num2str((1:nSplits)'), 'Value', 1);
