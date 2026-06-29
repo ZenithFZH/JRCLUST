@@ -152,31 +152,27 @@ function autoSplit(obj, multisite)
     hFigSplit.figData.currentSite = obj.currentSite;
     hFigSplit.figData.refracInt = obj.hCfg.refracInt/1000;
     hFigSplit.figData.manualSplitOff = [];
-    while 1
-        [assigns, pcaFeatures] = doAutoSplit(sampledTraces, [double(clusterTimes) double(localVpp')], hFigSplit); %TW
-        hFigSplit.figData.pcaFeatures = pcaFeatures;
-        hFigSplit.figData.clusterTimes = double(clusterTimes)/obj.hCfg.sampleRate;
-        hFigSplit.figData.localVpp = double(localVpp');
-        hFigSplit.figData.assignPart = normalizeAssignPart(assigns);
-        hFigSplit.figData.manualSplitOff = [];
-        hFigSplit.figData.localSpikes = localSpikes;
-        syncSplitControls(hFigSplit);
 
-        jrclust.utils.tryClose(hBox);
+    [assigns, pcaFeatures] = doAutoSplit(sampledTraces, [double(clusterTimes) double(localVpp')], hFigSplit); %TW
+    hFigSplit.figData.pcaFeatures = pcaFeatures;
+    hFigSplit.figData.clusterTimes = double(clusterTimes)/obj.hCfg.sampleRate;
+    hFigSplit.figData.localVpp = double(localVpp');
+    hFigSplit.figData.assignPart = normalizeAssignPart(assigns);
+    hFigSplit.figData.localSpikes = localSpikes;
+    syncSplitControls(hFigSplit);
 
-        updateSplitPlots(hFigSplit);
-        hFigSplit.figApply(@uiwait);
-        if ~hFigSplit.isReady % user closed the window
-            unitPart = [];
-            break;
-        elseif hFigSplit.figData.finished
-            if isfield(hFigSplit.figData, 'manualSplitOff') && ~isempty(hFigSplit.figData.manualSplitOff)
-                unitPart = hFigSplit.figData.manualSplitOff;
-            else
-                assignPart = hFigSplit.figData.assignPart;
-                unitPart = assignPart(2:end);
-            end
-            break;
+    jrclust.utils.tryClose(hBox);
+
+    updateSplitPlots(hFigSplit);
+    hFigSplit.figApply(@uiwait);
+
+    unitPart = [];
+    if hFigSplit.isReady && hFigSplit.figData.finished
+        if isfield(hFigSplit.figData, 'manualSplitOff') && ~isempty(hFigSplit.figData.manualSplitOff)
+            unitPart = hFigSplit.figData.manualSplitOff;
+        else
+            assignPart = hFigSplit.figData.assignPart;
+            unitPart = assignPart(2:end);
         end
     end
 
