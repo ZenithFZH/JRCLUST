@@ -164,15 +164,22 @@ function autoSplit(obj, multisite)
     jrclust.utils.tryClose(hBox);
 
     updateSplitPlots(hFigSplit);
-    hFigSplit.figApply(@uiwait);
-
     unitPart = [];
-    if hFigSplit.isReady && hFigSplit.figData.finished
-        if isfield(hFigSplit.figData, 'manualSplitOff') && ~isempty(hFigSplit.figData.manualSplitOff)
-            unitPart = hFigSplit.figData.manualSplitOff;
-        else
-            assignPart = hFigSplit.figData.assignPart;
-            unitPart = assignPart(2:end);
+    while hFigSplit.isReady
+        hFigSplit.figApply(@uiwait);
+
+        if ~hFigSplit.isReady
+            break;
+        end
+
+        if hFigSplit.figData.finished
+            if isfield(hFigSplit.figData, 'manualSplitOff') && ~isempty(hFigSplit.figData.manualSplitOff)
+                unitPart = hFigSplit.figData.manualSplitOff;
+            else
+                assignPart = hFigSplit.figData.assignPart;
+                unitPart = assignPart(2:end);
+            end
+            break;
         end
     end
 
