@@ -6,7 +6,7 @@ function spawnFigures(obj)
 
     if obj.hCfg.getOr('modernGuiMode', 0)
         modernFigList = obj.hCfg.getOr('modernFigList', ...
-            {'FigWav', 'FigSim', 'FigProj', 'FigTime', 'FigISI', 'FigCorr', 'FigHist'});
+            {'FigWav', 'FigGuide', 'FigSim', 'FigProj', 'FigTime', 'FigISI', 'FigCorr', 'FigHist'});
         keepFig = ismember(figList, modernFigList);
         keepFig = keepFig | ismember(figList, {'FigWav'});
         figList = figList(keepFig);
@@ -27,6 +27,8 @@ function spawnFigures(obj)
             case 'FigWav'
                 figTitle = 'Averaged waveform';
                 figMenubar = 1;
+            case 'FigGuide'
+                figTitle = 'Curation guide';
             case 'FigTime'
                 figTitle = 'Feature vs. time';
             case 'FigProj'

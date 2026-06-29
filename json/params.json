@@ -882,6 +882,7 @@
             "comment": "",
             "default_value": [
                 "FigCorr",
+                "FigGuide",
                 "FigHist",
                 "FigISI",
                 "FigMap",
@@ -899,6 +900,7 @@
                 ],
                 "values": [
                     "FigCorr",
+                    "FigGuide",
                     "FigHist",
                     "FigISI",
                     "FigMap",

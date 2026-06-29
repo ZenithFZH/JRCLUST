@@ -82,6 +82,7 @@ classdef CurateController < handle
         updateCursorFigWav(obj);
         updateFigCorr(obj);
         updateFigHist(obj);
+        updateFigGuide(obj);
         updateFigISI(obj);
         updateFigMap(obj);
         updateFigPos(obj);

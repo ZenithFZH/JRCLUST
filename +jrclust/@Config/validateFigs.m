@@ -73,6 +73,9 @@ function figPos = defaultFigPos(figList)
 
            case 'FigWav'
                figPos{f} = [.15 .2 .35 .8];
+
+           case 'FigGuide'
+               figPos{f} = [.5 0 .35 .2];
        end
     end
 end

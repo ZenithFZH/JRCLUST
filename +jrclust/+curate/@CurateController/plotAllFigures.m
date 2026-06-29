@@ -47,6 +47,7 @@ function plotAllFigures(obj)
 
     % plot rho-delta figure
     obj.updateFigRD();
+    obj.updateFigGuide();
 
     % update help texts
     helpFigs = fieldnames(obj.helpTexts);

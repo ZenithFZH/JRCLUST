@@ -59,7 +59,7 @@ nSpikesFigProj = 500; % (formerly nShow_proj) Maximum number of spikes per clust
 nSpikesFigWav = 30; % (formerly nSpk_show) Maximum number of spikes per cluster to display generally
 % For MATLAB R2025a+ or remote desktop sessions, uncomment these to reduce GUI load:
 % modernGuiMode = 1;
-% modernFigList = {'FigWav', 'FigSim', 'FigProj', 'FigTime', 'FigISI', 'FigCorr', 'FigHist'};
+% modernFigList = {'FigWav', 'FigGuide', 'FigSim', 'FigProj', 'FigTime', 'FigISI', 'FigCorr', 'FigHist'};
 % useModernROI = 1;
 % showSpikesTraces = 1;
 
