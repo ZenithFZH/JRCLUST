@@ -84,6 +84,7 @@ function autoSplit(obj, multisite)
     uiwait(splitDlg);
 
     if hFigSplit.figData.nSplits <= 1
+        hFigSplit.close();
         return;
     else
         nSplits = hFigSplit.figData.nSplits;
@@ -204,8 +205,12 @@ function [assigns, pcaFeatures] = doAutoSplit(sampledSpikes, spikeFeatures, hFig
 end
 
 function doCancel(splitDlg, hFigSplit)
-    delete(splitDlg);
     hFigSplit.figData.nSplits = 0;
+    try
+        uiresume(splitDlg);
+    catch
+    end
+    delete(splitDlg);
 end
 
 function preSplit(splitDlg, nsplit, btngrp, hFigSplit, hCfg)
@@ -715,8 +720,6 @@ function manualSplit(hFigSplit, pcPair)
             set(hFigSplit.figData.clustList, 'String', num2str((1:nSplits)'), 'Value', 1);
             updateSplitPlots(hFigSplit);
     end
-
-    hFigSplit.figApply(@uiwait);
 end
 
 function polyPos = getManualPolygonPosition(hAx)
