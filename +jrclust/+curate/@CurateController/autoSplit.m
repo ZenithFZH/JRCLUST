@@ -638,7 +638,7 @@ function manualSplit(hFigSplit, pcPair)
     hFigSplit.axApply('meanwf', @cla);
 
     nSpikes = numel(clusterTimes);
-    skip = ceil(numel(nSpikes) / 1e4);
+    skip = max(1, ceil(nSpikes / 1e4));
 
     % PC1vs2
     XData = pcaFeatures(:, 2);
@@ -680,16 +680,16 @@ function manualSplit(hFigSplit, pcPair)
 
     if all(pcPair == [1 2])
         axKey = 'pc12';
-        featuresX = pcaFeatures(1:skip:end, 2);
-        featuresY = pcaFeatures(1:skip:end, 1);
+        featuresX = pcaFeatures(:, 2);
+        featuresY = pcaFeatures(:, 1);
     elseif all(pcPair == [1 3])
         axKey = 'pc13';
-        featuresX = pcaFeatures(1:skip:end, 3);
-        featuresY = pcaFeatures(1:skip:end, 1); 
+        featuresX = pcaFeatures(:, 3);
+        featuresY = pcaFeatures(:, 1); 
     else % all(pcPair == [2 3])
         axKey = 'pc23';
-        featuresX = pcaFeatures(1:skip:end, 3);
-        featuresY = pcaFeatures(1:skip:end, 2);
+        featuresX = pcaFeatures(:, 3);
+        featuresY = pcaFeatures(:, 2);
     end
 
     hFigSplit.axApply(axKey, @hold, 'on');
@@ -703,7 +703,7 @@ function manualSplit(hFigSplit, pcPair)
 
     % partition spikes by polygon
     assigns = inpolygon(featuresX, featuresY, polyPos(:, 1), polyPos(:, 2));
-    assignPart = {find(assigns), find(~assigns)};
+    assignPart = {find(~assigns), find(assigns)};
     assignPartOld = hFigSplit.figData.assignPart;
 
     % update plots
@@ -803,6 +803,7 @@ function finishSplit(hFigSplit, fAbort)
             hFigSplit.figData.finished = 1;
             hFigSplit.figData.assignPart = [];
             hFigSplit.figApply(@uiresume);
+            hFigSplit.figApply(@delete);
         end
     else
         % confirm
